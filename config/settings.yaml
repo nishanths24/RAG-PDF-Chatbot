@@ -1,0 +1,23 @@
+application:
+  name: RAG PDF Chatbot
+  environment: development
+
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  temperature: 0.0
+
+embeddings:
+  provider: openai
+  model: text-embedding-3-small
+
+retrieval:
+  top_k: 4
+
+chunking:
+  chunk_size: 1000
+  chunk_overlap: 200
+
+paths:
+  uploads: data/uploads
+  vectorstore: data/vectorstore
