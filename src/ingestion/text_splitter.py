@@ -1,23 +1,26 @@
 """Text splitting helpers.
 
-Phase 1 provides the module layout only. Chunking is not implemented.
+Chunking is implemented in a later phase. The signature accepts the
+page-level LangChain Documents produced by the ingestion layer.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Sequence
+
+from langchain_core.documents import Document
 
 
-def split_documents(documents: list[Any]) -> list[Any]:
-    """Split documents into overlapping chunks.
+def split_documents(documents: Sequence[Document]) -> list[Document]:
+    """Split page-level documents into overlapping chunks.
 
     Args:
-        documents: Loaded document objects.
+        documents: Page-level documents from PDF ingestion.
 
     Returns:
-        Chunked document objects.
+        Chunked documents ready for embedding.
 
     Raises:
-        NotImplementedError: Always in Phase 1.
+        NotImplementedError: Chunking is not implemented in this phase.
     """
-    raise NotImplementedError("Text splitting is not implemented in Phase 1.")
+    raise NotImplementedError("Text splitting is not implemented yet.")
