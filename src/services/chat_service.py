@@ -1,21 +1,48 @@
-"""Chat service.
-
-Phase 1 provides the module layout only. Question answering is not implemented.
-"""
+"""Application service for RAG-powered chat."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 
-def ask_question(question: str) -> str:
-    """Answer a question using the RAG pipeline.
+from src.rag.qa_chain import QAChain, QAResponse
 
-    Args:
-        question: User question.
 
-    Returns:
-        Model answer grounded in indexed documents.
+@dataclass(frozen=True)
+class ChatResponse:
+    """Response returned by the chat service."""
 
-    Raises:
-        NotImplementedError: Always in Phase 1.
-    """
-    raise NotImplementedError("Chat service is not implemented in Phase 1.")
+    answer: str
+    sources: QAResponse
+
+
+class ChatService:
+    """Provide a simple application interface for RAG questions."""
+
+    def __init__(self, qa_chain: QAChain) -> None:
+        self.qa_chain = qa_chain
+
+    def ask(self, question: str) -> ChatResponse:
+        """Answer a question using the configured RAG chain."""
+        cleaned_question = question.strip()
+
+        if not cleaned_question:
+            raise ValueError("Question must not be empty.")
+
+        response = self.qa_chain.ask(cleaned_question)
+
+        return ChatResponse(
+            answer=response.answer,
+            sources=response,
+        )
+
+
+def ask_question(question: str, qa_chain: QAChain) -> str:
+    """Convenience function for answering a question."""
+    cleaned_question = question.strip()
+
+    if not cleaned_question:
+        raise ValueError("Question must not be empty.")
+
+    response = qa_chain.ask(cleaned_question)
+
+    return response.answer
