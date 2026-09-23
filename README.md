@@ -571,4 +571,6 @@ https://github.com/nishanths24
 
 ## License
 
-Add an appropriate open-source license if you intend to distribute the project publicly.
+This project is licensed under the MIT License.
+
+See the [LICENSE](LICENSE) file for details.
