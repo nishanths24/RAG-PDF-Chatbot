@@ -1,1 +1,8 @@
-"""Retrieval package. Implementation begins after Phase 1."""
+"""Retrieval package."""
+
+from .retriever import RetrievalResult, Retriever
+
+__all__ = [
+    "Retriever",
+    "RetrievalResult",
+]
