@@ -1,119 +1,70 @@
-"""Typed application settings loaded from YAML and environment variables."""
+"""Application configuration management."""
 
 from __future__ import annotations
 
-import os
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ENV_FILE = PROJECT_ROOT / ".env"
 YAML_CONFIG_FILE = PROJECT_ROOT / "config" / "settings.yaml"
 
 
-class ApplicationSettings(BaseModel):
-    """High-level application metadata."""
-
-    model_config = ConfigDict(extra="forbid")
+@dataclass(frozen=True)
+class ApplicationSettings:
+    """General application settings."""
 
     name: str
     environment: str
 
-    @field_validator("name", "environment")
-    @classmethod
-    def _not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("must not be blank")
-        return value.strip()
 
-
-class LLMSettings(BaseModel):
-    """Large language model configuration."""
-
-    model_config = ConfigDict(extra="forbid")
+@dataclass(frozen=True)
+class LLMSettings:
+    """Local LLM settings."""
 
     provider: str
     model: str
-    temperature: float = Field(ge=0.0, le=2.0)
-
-    @field_validator("provider", "model")
-    @classmethod
-    def _not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("must not be blank")
-        return value.strip()
+    temperature: float
 
 
-class EmbeddingSettings(BaseModel):
-    """Embedding model configuration."""
-
-    model_config = ConfigDict(extra="forbid")
+@dataclass(frozen=True)
+class EmbeddingSettings:
+    """Embedding configuration."""
 
     provider: str
     model: str
 
-    @field_validator("provider", "model")
-    @classmethod
-    def _not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("must not be blank")
-        return value.strip()
+
+@dataclass(frozen=True)
+class RetrievalSettings:
+    """Retrieval configuration."""
+
+    top_k: int
 
 
-class RetrievalSettings(BaseModel):
-    """Retriever configuration."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    top_k: int = Field(ge=1, le=50)
-
-
-class ChunkingSettings(BaseModel):
+@dataclass(frozen=True)
+class ChunkingSettings:
     """Document chunking configuration."""
 
-    model_config = ConfigDict(extra="forbid")
-
-    chunk_size: int = Field(ge=1)
-    chunk_overlap: int = Field(ge=0)
-
-    @model_validator(mode="after")
-    def _overlap_within_chunk_size(self) -> ChunkingSettings:
-        if self.chunk_overlap >= self.chunk_size:
-            raise ValueError("chunk_overlap must be smaller than chunk_size")
-        return self
+    chunk_size: int
+    chunk_overlap: int
 
 
-class PathSettings(BaseModel):
-    """Project-relative data paths."""
-
-    model_config = ConfigDict(extra="forbid")
+@dataclass(frozen=True)
+class PathSettings:
+    """Application path configuration."""
 
     uploads: str
     vectorstore: str
 
-    @field_validator("uploads", "vectorstore")
-    @classmethod
-    def _relative_posix_path(cls, value: str) -> str:
-        cleaned = value.strip().replace("\\", "/")
-        if not cleaned:
-            raise ValueError("path must not be blank")
-        path = Path(cleaned)
-        if path.is_absolute() or (len(cleaned) >= 2 and cleaned[1] == ":"):
-            raise ValueError("paths must be relative to the project root")
-        if ".." in path.parts:
-            raise ValueError("paths must not contain parent-directory segments")
-        return cleaned
 
-
-class Settings(BaseModel):
-    """Complete application settings for RAG PDF Chatbot."""
-
-    model_config = ConfigDict(extra="forbid")
+@dataclass(frozen=True)
+class Settings:
+    """Complete application configuration."""
 
     application: ApplicationSettings
     llm: LLMSettings
@@ -121,86 +72,158 @@ class Settings(BaseModel):
     retrieval: RetrievalSettings
     chunking: ChunkingSettings
     paths: PathSettings
-    openai_api_key: str = ""
-
-    @property
-    def project_root(self) -> Path:
-        """Return the repository root directory."""
-        return PROJECT_ROOT
 
     @property
     def uploads_dir(self) -> Path:
-        """Absolute path to the PDF upload directory."""
-        return (PROJECT_ROOT / self.paths.uploads).resolve()
+        """Return the absolute PDF upload directory."""
+
+        return PROJECT_ROOT / self.paths.uploads
 
     @property
     def vectorstore_dir(self) -> Path:
-        """Absolute path to the FAISS vectorstore directory."""
-        return (PROJECT_ROOT / self.paths.vectorstore).resolve()
+        """Return the absolute FAISS vector-store directory."""
+
+        return PROJECT_ROOT / self.paths.vectorstore
 
     def ensure_data_directories(self) -> None:
-        """Create configured data directories if they do not exist."""
-        self.uploads_dir.mkdir(parents=True, exist_ok=True)
-        self.vectorstore_dir.mkdir(parents=True, exist_ok=True)
+        """Create required application directories."""
+
+        self.uploads_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        self.vectorstore_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
 
 def _load_env() -> None:
-    """Load variables from the project `.env` file if it exists."""
-    load_dotenv(dotenv_path=ENV_FILE, override=False)
+    """Load environment variables from .env if present."""
+
+    env_file = PROJECT_ROOT / ".env"
+
+    if env_file.exists():
+        load_dotenv(env_file)
 
 
-def _load_yaml_config(path: Path) -> dict[str, Any]:
-    """Load and validate the YAML configuration mapping."""
-    if not path.is_file():
-        raise FileNotFoundError(f"Configuration file not found: {path}")
+def _load_yaml_config(
+    config_path: Path,
+) -> dict:
+    """Load YAML configuration."""
 
-    with path.open(encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
+    if not config_path.exists():
+        raise FileNotFoundError(
+            f"Configuration file not found: {config_path}"
+        )
+
+    with config_path.open(
+        "r",
+        encoding="utf-8",
+    ) as file:
+        data = yaml.safe_load(file)
 
     if not isinstance(data, dict):
-        raise ValueError(f"{path.name} must contain a YAML mapping")
+        raise ValueError(
+            "Configuration file must contain a YAML mapping."
+        )
 
-    required_sections = (
-        "application",
-        "llm",
-        "embeddings",
-        "retrieval",
-        "chunking",
-        "paths",
-    )
-    missing = [section for section in required_sections if section not in data]
-    if missing:
-        raise ValueError(f"Missing required configuration sections: {', '.join(missing)}")
     return data
 
 
-def _apply_env_overrides(raw: dict[str, Any]) -> dict[str, Any]:
-    """Overlay environment-specific model names onto YAML defaults."""
-    chat_model = os.getenv("OPENAI_CHAT_MODEL", "").strip()
-    embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "").strip()
+def _validate_settings(
+    settings: Settings,
+) -> None:
+    """Validate application configuration."""
 
-    if chat_model:
-        raw.setdefault("llm", {})
-        raw["llm"]["model"] = chat_model
-    if embedding_model:
-        raw.setdefault("embeddings", {})
-        raw["embeddings"]["model"] = embedding_model
-    return raw
+    if not settings.application.name.strip():
+        raise ValueError(
+            "Application name must not be empty."
+        )
+
+    if not settings.llm.provider.strip():
+        raise ValueError(
+            "LLM provider must not be empty."
+        )
+
+    if not settings.llm.model.strip():
+        raise ValueError(
+            "LLM model must not be empty."
+        )
+
+    if settings.llm.temperature < 0:
+        raise ValueError(
+            "LLM temperature must be >= 0."
+        )
+
+    if not settings.embeddings.provider.strip():
+        raise ValueError(
+            "Embedding provider must not be empty."
+        )
+
+    if not settings.embeddings.model.strip():
+        raise ValueError(
+            "Embedding model must not be empty."
+        )
+
+    if settings.retrieval.top_k <= 0:
+        raise ValueError(
+            "retrieval.top_k must be greater than zero."
+        )
+
+    if settings.chunking.chunk_size <= 0:
+        raise ValueError(
+            "chunk_size must be greater than zero."
+        )
+
+    if settings.chunking.chunk_overlap < 0:
+        raise ValueError(
+            "chunk_overlap must be >= 0."
+        )
+
+    if (
+        settings.chunking.chunk_overlap
+        >= settings.chunking.chunk_size
+    ):
+        raise ValueError(
+            "chunk_overlap must be smaller than chunk_size."
+        )
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Load, validate, and cache application settings.
+    """Load, validate, and cache application settings."""
 
-    Environment variables overlay YAML defaults for model names.
-    An OpenAI API key is exposed when present but is not required to boot
-    Phase 1 of the application.
-    """
     _load_env()
-    raw = _apply_env_overrides(_load_yaml_config(YAML_CONFIG_FILE))
-    settings = Settings(
-        **raw,
-        openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
+
+    raw = _load_yaml_config(
+        YAML_CONFIG_FILE
     )
+
+    settings = Settings(
+        application=ApplicationSettings(
+            **raw["application"]
+        ),
+        llm=LLMSettings(
+            **raw["llm"]
+        ),
+        embeddings=EmbeddingSettings(
+            **raw["embeddings"]
+        ),
+        retrieval=RetrievalSettings(
+            **raw["retrieval"]
+        ),
+        chunking=ChunkingSettings(
+            **raw["chunking"]
+        ),
+        paths=PathSettings(
+            **raw["paths"]
+        ),
+    )
+
+    _validate_settings(settings)
+
     settings.ensure_data_directories()
+
     return settings

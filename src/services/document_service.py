@@ -35,8 +35,12 @@ class DocumentService:
         chunk_size: int = 1000,
         chunk_overlap: int = 150,
     ) -> None:
+        """Initialize the document indexing service."""
+
         if chunk_size <= 0:
-            raise ValueError("chunk_size must be greater than zero.")
+            raise ValueError(
+                "chunk_size must be greater than zero."
+            )
 
         if chunk_overlap < 0:
             raise ValueError(
@@ -53,13 +57,25 @@ class DocumentService:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-    def index_pdf(self, file_path: str | Path) -> IndexingResult:
+    def index_pdf(
+        self,
+        file_path: str | Path,
+    ) -> IndexingResult:
         """Process and index a PDF into the FAISS vector store."""
+
+        # ---------------------------------------------------------
+        # 1. Extract PDF pages
+        # ---------------------------------------------------------
         page_documents = process_pdf(file_path)
 
         if not page_documents:
-            raise ValueError("PDF produced no documents.")
+            raise ValueError(
+                "PDF produced no documents."
+            )
 
+        # ---------------------------------------------------------
+        # 2. Split pages into chunks
+        # ---------------------------------------------------------
         chunks = split_documents(
             page_documents,
             chunk_size=self.chunk_size,
@@ -67,33 +83,72 @@ class DocumentService:
         )
 
         if not chunks:
-            raise ValueError("PDF produced no text chunks.")
+            raise ValueError(
+                "PDF produced no text chunks."
+            )
 
-        texts = [document.page_content for document in chunks]
+        # ---------------------------------------------------------
+        # 3. Extract text for embedding
+        # ---------------------------------------------------------
+        texts = [
+            document.page_content
+            for document in chunks
+        ]
 
-        embeddings = self.embedding_service.embed_documents(texts)
+        if not texts:
+            raise ValueError(
+                "PDF produced no text for embedding."
+            )
 
+        # ---------------------------------------------------------
+        # 4. Generate local embeddings
+        # ---------------------------------------------------------
+        embeddings = (
+            self.embedding_service.embed_documents(
+                texts
+            )
+        )
+
+        if not embeddings:
+            raise ValueError(
+                "Embedding service produced no vectors."
+            )
+
+        # ---------------------------------------------------------
+        # 5. Add vectors + metadata to FAISS
+        # ---------------------------------------------------------
         self.vector_store.add_documents(
             chunks,
             embeddings,
         )
 
+        # ---------------------------------------------------------
+        # 6. Persist FAISS index
+        # ---------------------------------------------------------
         self.vector_store.save()
 
+        # ---------------------------------------------------------
+        # 7. Read document metadata
+        # ---------------------------------------------------------
+        first_document = page_documents[0]
+
         document_id = str(
-            page_documents[0].metadata.get(
+            first_document.metadata.get(
                 "document_id",
                 "",
             )
         )
 
         file_name = str(
-            page_documents[0].metadata.get(
+            first_document.metadata.get(
                 "file_name",
                 Path(file_path).name,
             )
         )
 
+        # ---------------------------------------------------------
+        # 8. Return indexing summary
+        # ---------------------------------------------------------
         return IndexingResult(
             file_name=file_name,
             document_id=document_id,
@@ -104,16 +159,20 @@ class DocumentService:
 
     def load_existing_index(self) -> None:
         """Load an existing persistent FAISS index."""
+
         self.vector_store.load()
 
     def clear_index(self) -> None:
         """Clear all indexed documents."""
+
         self.vector_store.clear()
 
     def get_indexed_document_count(self) -> int:
         """Return the number of indexed chunks."""
+
         return self.vector_store.count()
 
     def is_index_empty(self) -> bool:
         """Return whether the index contains no chunks."""
+
         return self.vector_store.is_empty()

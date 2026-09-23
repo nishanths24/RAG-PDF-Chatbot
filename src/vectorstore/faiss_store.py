@@ -120,15 +120,21 @@ class FAISSVectorStore:
 
         for document in documents:
             if not isinstance(document, Document):
-                raise TypeError("All documents must be LangChain Document objects.")
+                raise TypeError(
+                    "All documents must be LangChain Document objects."
+                )
 
             if not document.page_content.strip():
-                raise ValueError("Documents must not contain empty page content.")
+                raise ValueError(
+                    "Documents must not contain empty page content."
+                )
 
         vectors = np.asarray(embeddings, dtype=np.float32)
 
         if vectors.ndim != 2:
-            raise ValueError("Embeddings must form a 2-dimensional array.")
+            raise ValueError(
+                "Embeddings must form a 2-dimensional array."
+            )
 
         if vectors.shape[1] != self.dimension:
             raise VectorStoreDimensionError(
@@ -137,7 +143,9 @@ class FAISSVectorStore:
             )
 
         if not np.isfinite(vectors).all():
-            raise ValueError("Embeddings must contain only finite values.")
+            raise ValueError(
+                "Embeddings must contain only finite values."
+            )
 
         self._index.add(vectors)
         self._documents.extend(documents)
@@ -171,7 +179,9 @@ class FAISSVectorStore:
         query = np.asarray(query_embedding, dtype=np.float32)
 
         if query.ndim != 1:
-            raise ValueError("Query embedding must be a one-dimensional vector.")
+            raise ValueError(
+                "Query embedding must be a one-dimensional vector."
+            )
 
         if query.shape[0] != self.dimension:
             raise VectorStoreDimensionError(
@@ -180,12 +190,17 @@ class FAISSVectorStore:
             )
 
         if not np.isfinite(query).all():
-            raise ValueError("Query embedding must contain only finite values.")
+            raise ValueError(
+                "Query embedding must contain only finite values."
+            )
 
         query = query.reshape(1, -1)
 
         result_count = min(k, self.count())
-        scores, indices = self._index.search(query, result_count)
+        scores, indices = self._index.search(
+            query,
+            result_count,
+        )
 
         results: list[tuple[Document, float]] = []
 
@@ -204,10 +219,16 @@ class FAISSVectorStore:
 
     def save(self) -> None:
         """Persist the FAISS index and document metadata to disk."""
-        self.persist_directory.mkdir(parents=True, exist_ok=True)
+        self.persist_directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
         try:
-            faiss.write_index(self._index, str(self.index_path))
+            faiss.write_index(
+                self._index,
+                str(self.index_path),
+            )
 
             metadata = [
                 self._document_to_metadata(document)
@@ -244,9 +265,14 @@ class FAISSVectorStore:
         metadata_exists = self.metadata_path.exists()
 
         if not index_exists and not metadata_exists:
-            logger.info("No persisted FAISS vector store found. Starting empty.")
+            logger.info(
+                "No persisted FAISS vector store found. "
+                "Starting empty."
+            )
+
             self._index = self._create_empty_index()
             self._documents = []
+
             return
 
         if index_exists != metadata_exists:
@@ -255,7 +281,9 @@ class FAISSVectorStore:
             )
 
         try:
-            index = faiss.read_index(str(self.index_path))
+            index = faiss.read_index(
+                str(self.index_path)
+            )
 
             if index.d != self.dimension:
                 raise VectorStoreDimensionError(
@@ -294,7 +322,13 @@ class FAISSVectorStore:
 
         except VectorStoreError:
             raise
-        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            json.JSONDecodeError,
+        ) as exc:
             raise VectorStorePersistenceError(
                 "Failed to load the FAISS vector store."
             ) from exc
@@ -304,10 +338,14 @@ class FAISSVectorStore:
         self._index = self._create_empty_index()
         self._documents = []
 
-        for path in (self.index_path, self.metadata_path):
+        for path in (
+            self.index_path,
+            self.metadata_path,
+        ):
             try:
                 if path.exists():
                     path.unlink()
+
             except OSError as exc:
                 raise VectorStorePersistenceError(
                     f"Failed to remove persisted file: {path}"
@@ -318,6 +356,26 @@ class FAISSVectorStore:
     def count(self) -> int:
         """Return the number of indexed vectors."""
         return int(self._index.ntotal)
+
+    def contains_document_id(self, document_id: str) -> bool:
+        """Return True when a document ID is already indexed."""
+        cleaned_document_id = str(document_id).strip()
+
+        if not cleaned_document_id:
+            raise ValueError(
+                "document_id must not be empty."
+            )
+
+        return any(
+            str(
+                document.metadata.get(
+                    "document_id",
+                    "",
+                )
+            ).strip()
+            == cleaned_document_id
+            for document in self._documents
+        )
 
     def is_empty(self) -> bool:
         """Return True when the vector store contains no vectors."""

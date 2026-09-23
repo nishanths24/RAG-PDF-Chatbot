@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.rag.qa_chain import QAChain, QAResponse
+from src.rag.qa_chain import QAChain
+from src.retrieval.retriever import RetrievalResult
 
 
 @dataclass(frozen=True)
@@ -12,7 +13,7 @@ class ChatResponse:
     """Response returned by the chat service."""
 
     answer: str
-    sources: QAResponse
+    sources: list[RetrievalResult]
 
 
 class ChatService:
@@ -32,7 +33,7 @@ class ChatService:
 
         return ChatResponse(
             answer=response.answer,
-            sources=response,
+            sources=response.sources,
         )
 
 

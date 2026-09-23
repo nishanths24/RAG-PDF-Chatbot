@@ -1,9 +1,5 @@
 [server]
-headless = true
-runOnSave = true
-
-[browser]
-gatherUsageStats = false
+fileWatcherType = "none"
 
 [theme]
 base = "light"

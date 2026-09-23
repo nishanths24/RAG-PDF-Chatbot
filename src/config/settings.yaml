@@ -12,7 +12,7 @@ embeddings:
   model: sentence-transformers/all-MiniLM-L6-v2
 
 retrieval:
-  top_k: 4
+  top_k: 6
 
 chunking:
   chunk_size: 1000

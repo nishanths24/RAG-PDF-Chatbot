@@ -42,7 +42,7 @@ class ChatServiceTests(unittest.TestCase):
             result.answer,
             "Machine learning is a subset of AI.",
         )
-        self.assertIs(result.sources, qa_response)
+        self.assertEqual(result.sources, qa_response.sources)
 
         self.qa_chain.ask.assert_called_once_with(
             "What is machine learning?"
