@@ -73,12 +73,16 @@ def ask_question(
 
     try:
 
+        # Pass up to the last 6 messages (3 turns) as history, excluding the current question just added
+        history = st.session_state["messages"][:-1][-6:]
+
         with st.spinner(
             "Searching the document..."
         ):
 
             response = chat_service.ask(
-                question
+                question,
+                history=history,
             )
 
         st.session_state["messages"].append(

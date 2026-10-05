@@ -34,7 +34,7 @@ class QAChain:
         self.router = QueryRouter()
         self.document_registry = document_registry
 
-    def ask(self, question: str) -> QAResponse:
+    def ask(self, question: str, history: list[dict[str, str]] | None = None) -> QAResponse:
         """Retrieve relevant context and generate a grounded answer."""
         cleaned_question = question.strip()
 
@@ -46,72 +46,85 @@ class QAChain:
 
         import logging
         logger = logging.getLogger(__name__)
-        
-        target_document_id = None
-        if self.document_registry:
-            query_lower = cleaned_question.lower()
-            # Ensure we fetch latest from registry
-            docs = self.document_registry.get_all_documents()
-            
-            logger.info(f"[QA] registry_docs={len(docs)}")
-            logger.info(f"[QA] registry_names={[d.file_name for d in docs]}")
 
-            # 1. Check ordinal references
-            ordinal_map = {
-                "first": 0, "1st": 0,
-                "second": 1, "2nd": 1,
-                "third": 2, "3rd": 2,
-                "fourth": 3, "4th": 3,
-                "fifth": 4, "5th": 4
-            }
-            
-            # Match ordinal + document/pdf
-            for prefix, index in ordinal_map.items():
-                pattern = r'\b' + prefix + r'\b.*?\b(document|pdf)\b'
-                if re.search(pattern, query_lower):
-                    if index < len(docs):
-                        target_document_id = docs[index].document_id
-                    break
-            
-            # 2. Check exact filename
-            if not target_document_id:
-                # Sort by length descending to match longest possible filename first
-                sorted_docs = sorted(docs, key=lambda d: len(d.file_name), reverse=True)
-                for doc in sorted_docs:
-                    fname = doc.file_name.lower()
-                    fname_no_ext = fname.replace('.pdf', '')
-                    
-                    # Use word boundaries for safety against substring collisions (e.g. "us" in "business")
-                    pattern = r'\b' + re.escape(fname_no_ext) + r'\b'
-                    if re.search(pattern, query_lower) or fname in query_lower:
-                        target_document_id = doc.document_id
-                        break
-        
         logger.info(f"[QA] query={cleaned_question}")
         logger.info(f"[QA] normalized_query={cleaned_question.lower()}")
         logger.info(f"[QA] mode={mode.value}")
-        logger.info(f"[QA] resolved_document_id={target_document_id}")
         logger.info(f"[QA] retrieval_depth={depth}")
 
         if mode in (QueryMode.CONVERSATIONAL, QueryMode.APP_HELP):
             logger.info(f"[QA] retriever_called=False")
             
             if mode == QueryMode.CONVERSATIONAL:
-                prompt = f"{SYSTEM_PROMPT}\n\nUser: {cleaned_question}\n\nAssistant:"
+                # Basic context string for conversational
+                prompt = build_rag_prompt(
+                    question=cleaned_question,
+                    context="No context needed for casual conversation.",
+                    history=history,
+                )
             else:
-                prompt = (
-                    f"{SYSTEM_PROMPT}\n\n"
-                    "The user is asking for help using this application. "
-                    "This is a Streamlit PDF Chatbot. Users can upload multiple PDFs using the "
-                    "Upload button in the 'Document Library' on the left sidebar. "
-                    "They can view uploaded documents there, remove individual documents, "
-                    "or clear the entire knowledge base. "
-                    "They can also adjust the 'Retrieval Sources (top_k)' using a slider. "
-                    "Please answer their question clearly and directly based on this information.\n\n"
-                    f"User: {cleaned_question}\n\nAssistant:"
+                prompt = build_rag_prompt(
+                    question=cleaned_question,
+                    context=(
+                        "App Help Information:\n"
+                        "The user is asking how to use the RAG PDF Chatbot application.\n"
+                        "Instructions for using the app:\n"
+                        "- To upload a PDF, use the file uploader in the left sidebar.\n"
+                        "- To remove a PDF, click the 'Remove' button next to the PDF in the sidebar.\n"
+                        "- To clear all PDFs, click the 'Clear All Documents' button in the sidebar.\n"
+                        "- Once uploaded, ask questions about the PDF in the main chat area."
+                    ),
+                    history=history,
                 )
             answer = self.llm.generate(prompt)
             return QAResponse(answer=answer, sources=[])
+
+        # RAG Paths
+        active_doc_ids = []
+        target_document_id = None
+        if self.document_registry:
+            query_lower = cleaned_question.lower()
+            # Ensure we fetch latest from registry
+            docs = self.document_registry.get_all_documents()
+            active_doc_ids = [doc.document_id for doc in docs]
+            
+            logger.info(f"[QA] registry_docs={len(docs)}")
+            logger.info(f"[QA] registry_names={[d.file_name for d in docs]}")
+
+            # Resolve document ONLY if not SYNTHESIS
+            if mode != QueryMode.SYNTHESIS:
+                # 1. Check ordinal references
+                ordinal_map = {
+                    "first": 0, "1st": 0,
+                    "second": 1, "2nd": 1,
+                    "third": 2, "3rd": 2,
+                    "fourth": 3, "4th": 3,
+                    "fifth": 4, "5th": 4
+                }
+                
+                # Match ordinal + document/pdf
+                for prefix, index in ordinal_map.items():
+                    pattern = r'\b' + prefix + r'\b.*?\b(document|pdf)\b'
+                    if re.search(pattern, query_lower):
+                        if index < len(docs):
+                            target_document_id = docs[index].document_id
+                        break
+                
+                # 2. Check exact filename
+                if not target_document_id:
+                    # Sort by length descending to match longest possible filename first
+                    sorted_docs = sorted(docs, key=lambda d: len(d.file_name), reverse=True)
+                    for doc in sorted_docs:
+                        fname = doc.file_name.lower()
+                        fname_no_ext = fname.replace('.pdf', '')
+                        
+                        # Use word boundaries for safety against substring collisions (e.g. "us" in "business")
+                        pattern = r'\b' + re.escape(fname_no_ext) + r'\b'
+                        if re.search(pattern, query_lower) or fname in query_lower:
+                            target_document_id = doc.document_id
+                            break
+        
+        logger.info(f"[QA] resolved_document_id={target_document_id}")
         
         logger.info(f"[QA] retriever_called=True")
         results = []
@@ -121,7 +134,8 @@ class QAChain:
             results = self.retriever.retrieve(
                 cleaned_question,
                 document_id=target_document_id,
-                balance_synthesis=(mode == QueryMode.SYNTHESIS and not target_document_id)
+                balance_synthesis=(mode == QueryMode.SYNTHESIS and not target_document_id),
+                active_document_ids=active_doc_ids,
             )
         finally:
             self.retriever.top_k = original_top_k
@@ -161,9 +175,24 @@ class QAChain:
 
         context = "\n\n".join(context_parts) if context_parts else ""
 
+        llm_question = cleaned_question
+        
+        # Give the LLM explicit awareness of resolved documents to prevent confusion
+        # when the user uses ordinal references (e.g., "second document").
+        if target_document_id and self.document_registry:
+            resolved_doc = self.document_registry.get_document(target_document_id)
+            if resolved_doc:
+                llm_question = f"Regarding the document '{resolved_doc.file_name}':\n{cleaned_question}"
+        elif mode == QueryMode.SYNTHESIS and not target_document_id:
+            llm_question = (
+                f"{cleaned_question}\n\n"
+                "(Instruction: When summarizing multiple documents, please explicitly mention the file names of the documents you are summarizing in your answer.)"
+            )
+
         prompt = build_rag_prompt(
-            question=cleaned_question,
+            question=llm_question,
             context=context,
+            history=history,
         )
 
         answer = self.llm.generate(prompt)

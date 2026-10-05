@@ -22,14 +22,14 @@ class ChatService:
     def __init__(self, qa_chain: QAChain) -> None:
         self.qa_chain = qa_chain
 
-    def ask(self, question: str) -> ChatResponse:
+    def ask(self, question: str, history: list[dict[str, str]] | None = None) -> ChatResponse:
         """Answer a question using the configured RAG chain."""
         cleaned_question = question.strip()
 
         if not cleaned_question:
             raise ValueError("Question must not be empty.")
 
-        response = self.qa_chain.ask(cleaned_question)
+        response = self.qa_chain.ask(cleaned_question, history=history)
 
         return ChatResponse(
             answer=response.answer,
@@ -37,13 +37,13 @@ class ChatService:
         )
 
 
-def ask_question(question: str, qa_chain: QAChain) -> str:
+def ask_question(question: str, qa_chain: QAChain, history: list[dict[str, str]] | None = None) -> str:
     """Convenience function for answering a question."""
     cleaned_question = question.strip()
 
     if not cleaned_question:
         raise ValueError("Question must not be empty.")
 
-    response = qa_chain.ask(cleaned_question)
+    response = qa_chain.ask(cleaned_question, history=history)
 
     return response.answer

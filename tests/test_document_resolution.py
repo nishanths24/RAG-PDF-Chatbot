@@ -75,18 +75,33 @@ class DocumentResolutionTests(unittest.TestCase):
     def test_first_document_targets_registry_first(self):
         self.retriever.retrieve.return_value = []
         self.qa_chain.ask("What is the first document about?")
-        self.retriever.retrieve.assert_called_with("What is the first document about?", document_id="doc_id_1", balance_synthesis=False)
+        self.retriever.retrieve.assert_called_with(
+            "What is the first document about?",
+            document_id="doc_id_1",
+            balance_synthesis=False,
+            active_document_ids=['doc_id_1', 'doc_id_2', 'doc_id_3']
+        )
 
     def test_second_document_targets_registry_second(self):
         self.retriever.retrieve.return_value = []
         self.qa_chain.ask("What is the second document about?")
-        self.retriever.retrieve.assert_called_with("What is the second document about?", document_id="doc_id_2", balance_synthesis=False)
+        self.retriever.retrieve.assert_called_with(
+            "What is the second document about?",
+            document_id="doc_id_2",
+            balance_synthesis=False,
+            active_document_ids=['doc_id_1', 'doc_id_2', 'doc_id_3']
+        )
 
     def test_ordinal_resolution_after_multiple_uploads(self):
         # Simulate state sharing / cached service instance
         self.retriever.retrieve.return_value = []
         self.qa_chain.ask("What is the first document about?")
-        self.retriever.retrieve.assert_called_with("What is the first document about?", document_id="doc_id_1", balance_synthesis=False)
+        self.retriever.retrieve.assert_called_with(
+            "What is the first document about?",
+            document_id="doc_id_1",
+            balance_synthesis=False,
+            active_document_ids=['doc_id_1', 'doc_id_2', 'doc_id_3']
+        )
         
         # Add a new doc
         self.doc4 = DocumentMetadata("doc_id_4", "New.pdf", "hash4", 1, 1, "time4")
@@ -94,12 +109,22 @@ class DocumentResolutionTests(unittest.TestCase):
         
         self.retriever.retrieve.reset_mock()
         self.qa_chain.ask("What is the fourth document about?")
-        self.retriever.retrieve.assert_called_with("What is the fourth document about?", document_id="doc_id_4", balance_synthesis=False)
+        self.retriever.retrieve.assert_called_with(
+            "What is the fourth document about?",
+            document_id="doc_id_4",
+            balance_synthesis=False,
+            active_document_ids=['doc_id_1', 'doc_id_2', 'doc_id_3', 'doc_id_4']
+        )
 
     def test_synthesis_passes_document_id_none(self):
         self.retriever.retrieve.return_value = []
         self.qa_chain.ask("What all PDFs contain?")
-        self.retriever.retrieve.assert_called_with("What all PDFs contain?", document_id=None, balance_synthesis=True)
+        self.retriever.retrieve.assert_called_with(
+            "What all PDFs contain?",
+            document_id=None,
+            balance_synthesis=True,
+            active_document_ids=['doc_id_1', 'doc_id_2', 'doc_id_3']
+        )
 
     def test_synthesis_can_retrieve_from_multiple_documents(self):
         # We need to simulate the retriever actually returning mixed documents.
@@ -148,7 +173,12 @@ class DocumentResolutionTests(unittest.TestCase):
     def test_filename_query_filters_to_exact_document(self):
         self.retriever.retrieve.return_value = []
         self.qa_chain.ask("What is Business.pdf about?")
-        self.retriever.retrieve.assert_called_with("What is Business.pdf about?", document_id="doc_id_1", balance_synthesis=False)
+        self.retriever.retrieve.assert_called_with(
+            "What is Business.pdf about?",
+            document_id="doc_id_1",
+            balance_synthesis=False,
+            active_document_ids=['doc_id_1', 'doc_id_2', 'doc_id_3']
+        )
 
     def test_registry_updates_are_visible_to_cached_services(self):
         # Already tested by test_ordinal_resolution_after_multiple_uploads

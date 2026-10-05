@@ -310,6 +310,7 @@ Stay grounded in the uploaded document for document-specific claims.
 def build_rag_prompt(
     question: str,
     context: str,
+    history: list[dict[str, str]] | None = None,
 ) -> str:
     """Build the prompt sent to the local LLM."""
 
@@ -321,6 +322,22 @@ def build_rag_prompt(
 
     if not cleaned_context:
         raise ValueError("Context must not be empty.")
+        
+    history_section = ""
+    if history:
+        history_parts = []
+        for msg in history:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            history_parts.append(f"{role}: {msg['content']}")
+        history_text = "\n\n".join(history_parts)
+        
+        history_section = f"""
+==================================================
+CONVERSATION HISTORY (Previous Messages)
+==================================================
+
+{history_text}
+"""
 
     return f"""{SYSTEM_PROMPT}
 
@@ -329,7 +346,7 @@ RETRIEVED DOCUMENT CONTEXT
 ==================================================
 
 {cleaned_context}
-
+{history_section}
 ==================================================
 USER MESSAGE
 ==================================================

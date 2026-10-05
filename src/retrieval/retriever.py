@@ -36,6 +36,11 @@ class Retriever:
         "key points",
         "give me an overview",
         "describe this document",
+        "first document",
+        "second document",
+        "third document",
+        "fourth document",
+        "fifth document",
     )
 
     BROAD_QUERY_TEMPLATES = (
@@ -99,6 +104,7 @@ class Retriever:
         results: list[RetrievalResult],
         document_id: str | None,
         balance_synthesis: bool,
+        active_document_ids: list[str] | None = None,
     ) -> list[RetrievalResult]:
         """Filter by document_id if provided, deduplicate, apply score threshold, and optionally balance."""
         if document_id:
@@ -118,8 +124,8 @@ class Retriever:
 
         # 2. Apply general threshold or synthesis threshold
         if balance_synthesis:
-            # Drop near-zero or negative similarity noise
-            threshold = max(0.15, self.score_threshold or 0.0)
+            # Drop negative similarity noise only, we want all docs to contribute
+            threshold = max(0.0, self.score_threshold or 0.0)
             results = [r for r in results if r.score >= threshold]
         else:
             results = self._apply_score_threshold(results)
@@ -127,8 +133,12 @@ class Retriever:
         if not balance_synthesis or not results:
             return results[:self.top_k]
 
-        unique_docs = len({r.document.metadata.get("document_id") for r in results})
-        max_per_doc = max(2, self.top_k // unique_docs) if unique_docs > 0 else self.top_k
+        if active_document_ids and balance_synthesis:
+            unique_docs = len(active_document_ids)
+        else:
+            unique_docs = len({r.document.metadata.get("document_id") for r in results})
+            
+        max_per_doc = max(1, self.top_k // unique_docs) if unique_docs > 0 else self.top_k
         
         balanced = []
         doc_count = {}
@@ -154,12 +164,21 @@ class Retriever:
         query: str,
         document_id: str | None,
         balance_synthesis: bool,
+        active_document_ids: list[str] | None = None,
     ) -> list[RetrievalResult]:
         """Perform normal single-query semantic retrieval."""
 
         query_embedding = self.embedding_service.embed_query(query)
 
-        fetch_k = max(self.top_k * 10, 50) if balance_synthesis else max(self.top_k * 5, 20)
+        if document_id:
+            fetch_k = max(1, self.vector_store.count())
+        else:
+            fetch_k = (
+                max(self.top_k * 10, 50)
+                if balance_synthesis
+                else max(self.top_k * 5, 20)
+            )
+
         matches = self.vector_store.similarity_search(
             query_embedding,
             k=fetch_k,
@@ -170,16 +189,22 @@ class Retriever:
                 document=document,
                 score=float(score),
             )
-            for document, score in matches
+        for document, score in matches
         ]
 
-        return self._filter_and_balance(results, document_id, balance_synthesis)
+        return self._filter_and_balance(
+            results,
+            document_id,
+            balance_synthesis,
+            active_document_ids,
+        )
 
     def _retrieve_broad(
         self,
         query: str,
         document_id: str | None,
         balance_synthesis: bool,
+        active_document_ids: list[str] | None = None,
     ) -> list[RetrievalResult]:
         """Retrieve diverse context for broad document-level questions."""
 
@@ -189,7 +214,14 @@ class Retriever:
         ]
 
         # Significantly boost fetch pool during synthesis to ensure we hit all documents
-        fetch_k = max(self.top_k * 10, 50) if balance_synthesis else max(self.top_k * 3, 10)
+        if document_id:
+            fetch_k = max(1, self.vector_store.count())
+        else:
+            fetch_k = (
+                max(self.top_k * 10, 50)
+                if balance_synthesis
+                else max(self.top_k * 5, 20)
+                )
 
         candidates: dict[str, RetrievalResult] = {}
 
@@ -233,13 +265,14 @@ class Retriever:
             reverse=True,
         )
 
-        return self._filter_and_balance(ranked_candidates, document_id, balance_synthesis)
+        return self._filter_and_balance(ranked_candidates, document_id, balance_synthesis, active_document_ids)
 
     def retrieve(
         self,
         query: str,
         document_id: str | None = None,
         balance_synthesis: bool = False,
+        active_document_ids: list[str] | None = None,
     ) -> list[RetrievalResult]:
         """Retrieve relevant chunks for a user query."""
 
@@ -252,9 +285,9 @@ class Retriever:
             return []
 
         if self._is_broad_question(cleaned_query):
-            return self._retrieve_broad(cleaned_query, document_id, balance_synthesis)
+            return self._retrieve_broad(cleaned_query, document_id, balance_synthesis, active_document_ids)
 
-        return self._retrieve_standard(cleaned_query, document_id, balance_synthesis)
+        return self._retrieve_standard(cleaned_query, document_id, balance_synthesis, active_document_ids)
 
     def retrieve_documents(
         self,

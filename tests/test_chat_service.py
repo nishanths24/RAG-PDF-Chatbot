@@ -45,7 +45,7 @@ class ChatServiceTests(unittest.TestCase):
         self.assertEqual(result.sources, qa_response.sources)
 
         self.qa_chain.ask.assert_called_once_with(
-            "What is machine learning?"
+            "What is machine learning?", history=None
         )
 
     def test_ask_question_returns_answer(self) -> None:

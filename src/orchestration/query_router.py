@@ -33,6 +33,7 @@ class QueryRouter:
             r"where can i upload",
             r"how do i upload",
             r"how can i upload",
+            r"where do i upload",
             r"where is the upload",
             r"where is the document library",
             r"how do i remove",
