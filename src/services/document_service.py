@@ -11,6 +11,8 @@ from src.embeddings.embedding_service import EmbeddingService
 from src.ingestion.document_processor import process_pdf
 from src.ingestion.text_splitter import split_documents
 from src.vectorstore.faiss_store import FAISSVectorStore
+from src.services.document_registry import DocumentRegistry, DocumentMetadata
+from datetime import datetime, timezone
 
 
 @dataclass(frozen=True)
@@ -56,12 +58,18 @@ class DocumentService:
         self.vector_store = vector_store
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self.registry = DocumentRegistry(persist_directory=self.vector_store.persist_directory)
+        self.registry.load()
 
     def index_pdf(
         self,
         file_path: str | Path,
+        file_hash: str = "",
     ) -> IndexingResult:
         """Process and index a PDF into the FAISS vector store."""
+        
+        if file_hash and self.registry.contains_hash(file_hash):
+            raise ValueError(f"Document with hash {file_hash} is already indexed.")
 
         # ---------------------------------------------------------
         # 1. Extract PDF pages
@@ -147,7 +155,19 @@ class DocumentService:
         )
 
         # ---------------------------------------------------------
-        # 8. Return indexing summary
+        # 8. Register document
+        # ---------------------------------------------------------
+        self.registry.add_document(DocumentMetadata(
+            document_id=document_id,
+            file_name=file_name,
+            file_hash=file_hash,
+            page_count=len(page_documents),
+            chunk_count=len(chunks),
+            indexed_at=datetime.now(timezone.utc).isoformat()
+        ))
+
+        # ---------------------------------------------------------
+        # 9. Return indexing summary
         # ---------------------------------------------------------
         return IndexingResult(
             file_name=file_name,
@@ -159,13 +179,22 @@ class DocumentService:
 
     def load_existing_index(self) -> None:
         """Load an existing persistent FAISS index."""
-
         self.vector_store.load()
+        self.registry.load()
 
     def clear_index(self) -> None:
         """Clear all indexed documents."""
-
         self.vector_store.clear()
+        self.registry.clear()
+
+    def remove_document(self, document_id: str) -> None:
+        """Remove a specific document from vector store and registry."""
+        self.vector_store.remove_document(document_id)
+        self.registry.remove_document(document_id)
+
+    def get_all_documents(self) -> list[DocumentMetadata]:
+        """Return all indexed documents from the registry."""
+        return self.registry.get_all_documents()
 
     def get_indexed_document_count(self) -> int:
         """Return the number of indexed chunks."""

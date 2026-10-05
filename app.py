@@ -42,33 +42,22 @@ from src.vectorstore.faiss_store import FAISSVectorStore
 # BUILD SERVICES
 # ============================================================
 
+@st.cache_resource
 def build_services(
-    top_k: int | None = None,
+    top_k: int = 6,
 ) -> tuple[DocumentService, ChatService]:
     """Create and connect all RAG services."""
 
     settings = get_settings()
 
-    # --------------------------------------------------------
-    # Embedding service
-    # --------------------------------------------------------
-
     embedding_service = EmbeddingService(
         model=settings.embeddings.model,
     )
-
-    # --------------------------------------------------------
-    # FAISS vector store
-    # --------------------------------------------------------
 
     vector_store = FAISSVectorStore(
         dimension=embedding_service.get_embedding_dimension(),
         persist_directory=settings.vectorstore_dir,
     )
-
-    # --------------------------------------------------------
-    # Document service
-    # --------------------------------------------------------
 
     document_service = DocumentService(
         embedding_service=embedding_service,
@@ -77,53 +66,26 @@ def build_services(
         chunk_overlap=settings.chunking.chunk_overlap,
     )
 
-    # --------------------------------------------------------
-    # Load persistent FAISS index
-    # --------------------------------------------------------
-
     try:
-        vector_store.load()
+        document_service.load_existing_index()
     except Exception:
-        # No existing index is allowed.
         pass
-
-    # --------------------------------------------------------
-    # Retriever
-    # --------------------------------------------------------
-
-    actual_top_k = (
-        top_k
-        if top_k is not None
-        else settings.retrieval.top_k
-    )
 
     retriever = Retriever(
         embedding_service=embedding_service,
         vector_store=vector_store,
-        top_k=actual_top_k,
+        top_k=top_k,
     )
-
-    # --------------------------------------------------------
-    # Groq
-    # --------------------------------------------------------
 
     groq_service = GroqService(
         model=settings.llm.model,
         temperature=settings.llm.temperature,
     )
 
-    # --------------------------------------------------------
-    # QA Chain
-    # --------------------------------------------------------
-
     qa_chain = QAChain(
         retriever=retriever,
         llm=groq_service,
     )
-
-    # --------------------------------------------------------
-    # Chat Service
-    # --------------------------------------------------------
 
     chat_service = ChatService(
         qa_chain
@@ -138,7 +100,6 @@ def build_services(
 
 def get_file_hash(uploaded_file) -> str:
     """Generate a SHA-256 hash for the uploaded PDF."""
-
     return hashlib.sha256(
         uploaded_file.getvalue()
     ).hexdigest()
@@ -153,10 +114,6 @@ def main() -> None:
 
     settings = get_settings()
 
-    # --------------------------------------------------------
-    # Streamlit page configuration
-    # --------------------------------------------------------
-
     st.set_page_config(
         page_title="RAG PDF Chatbot",
         page_icon="📚",
@@ -164,32 +121,13 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
 
-    # --------------------------------------------------------
-    # Session state
-    # --------------------------------------------------------
-
     if "messages" not in st.session_state:
         st.session_state["messages"] = []
 
-    if "indexed_file_hash" not in st.session_state:
-        st.session_state["indexed_file_hash"] = None
-
-    if "indexed_file_name" not in st.session_state:
-        st.session_state["indexed_file_name"] = None
-
-    # --------------------------------------------------------
-    # Sidebar
-    # --------------------------------------------------------
-
     sidebar = render_sidebar()
 
-    uploaded_file = sidebar["uploaded_file"]
-
+    uploaded_files = sidebar["uploaded_files"]
     top_k = sidebar["top_k"]
-
-    # --------------------------------------------------------
-    # Page title
-    # --------------------------------------------------------
 
     st.title("RAG PDF Chatbot")
 
@@ -198,122 +136,65 @@ def main() -> None:
         "FAISS, and Groq."
     )
 
-    # --------------------------------------------------------
-    # Build services
-    # --------------------------------------------------------
-
     try:
-
         document_service, chat_service = build_services(
             top_k=top_k,
         )
-
+        chat_service.qa_chain.retriever.top_k = top_k
     except Exception as exc:
-
-        st.error(
-            f"Unable to initialize the RAG system: {exc}"
-        )
-
+        st.error(f"Unable to initialize the RAG system: {exc}")
         st.stop()
 
-    # --------------------------------------------------------
-    # Upload and index PDF
-    # --------------------------------------------------------
-
-    if uploaded_file is not None:
-
-        current_hash = get_file_hash(
-            uploaded_file
-        )
-
-        previous_hash = (
-            st.session_state.get(
-                "indexed_file_hash"
-            )
-        )
-
-        # Only process a new/different PDF.
-        if current_hash != previous_hash:
-
-            try:
-
-                # Clear previous vector store.
-                document_service.clear_index()
-
-                # Clear previous chat history.
-                st.session_state["messages"] = []
-
-                # Save PDF.
-                file_path = save_uploaded_file(
-                    uploaded_file,
-                    settings.uploads_dir,
-                )
-
-                # Index PDF.
-                with st.spinner(
-                    "Processing PDF..."
-                ):
-
-                    result = document_service.index_pdf(
-                        file_path
+    # Upload multiple PDFs
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            file_hash = get_file_hash(uploaded_file)
+            
+            if not document_service.registry.contains_hash(file_hash):
+                try:
+                    file_path = save_uploaded_file(
+                        uploaded_file,
+                        settings.uploads_dir,
                     )
+                    with st.spinner(f"Processing {uploaded_file.name}..."):
+                        result = document_service.index_pdf(file_path, file_hash=file_hash)
+                    st.success(f"Indexed {result.file_name}: {result.pages} pages, {result.chunks} chunks.")
+                except Exception as exc:
+                    st.error(f"Unable to index PDF {uploaded_file.name}: {exc}")
 
-                # Save session information.
-                st.session_state[
-                    "indexed_file_hash"
-                ] = current_hash
+    # UI for existing documents
+    docs = document_service.get_all_documents()
+    
+    with st.sidebar:
+        st.subheader("Indexed Documents")
+        if docs:
+            for doc in docs:
+                st.markdown(f"☑ **{doc.file_name}**")
+                st.caption(f"{doc.page_count} pages · {doc.chunk_count} chunks")
+                if st.button("Remove", key=f"remove_{doc.document_id}"):
+                    document_service.remove_document(doc.document_id)
+                    st.rerun()
+            
+            st.divider()
+            if st.button("Clear All Documents", type="primary"):
+                document_service.clear_index()
+                st.session_state["messages"] = []
+                st.rerun()
+        else:
+            st.info("No documents uploaded yet.")
 
-                st.session_state[
-                    "indexed_file_name"
-                ] = uploaded_file.name
-
-                st.session_state[
-                    "indexed_document_id"
-                ] = result.document_id
-
-                st.success(
-                    f"Indexed {result.file_name}: "
-                    f"{result.pages} pages, "
-                    f"{result.chunks} chunks."
-                )
-
-            except Exception as exc:
-
-                st.error(
-                    f"Unable to index PDF: {exc}"
-                )
-
-    # --------------------------------------------------------
-    # Vector store status
-    # --------------------------------------------------------
-
+    # Status
     if document_service.is_index_empty():
-
-        st.info(
-            "Upload a PDF from the sidebar "
-            "to start asking questions."
-        )
-
+        st.info("Upload PDFs from the sidebar to start asking questions.")
     else:
-
         st.success(
-            f"Vector store ready — "
-            f"{document_service.get_indexed_document_count()} "
-            f"chunks indexed."
+            f"Knowledge base ready — {len(docs)} documents · "
+            f"{document_service.get_indexed_document_count()} chunks indexed."
         )
 
-    # --------------------------------------------------------
-    # Chat interface
-    # --------------------------------------------------------
+    # Chat
+    render_chat(chat_service)
 
-    render_chat(
-        chat_service
-    )
-
-
-# ============================================================
-# APPLICATION ENTRY POINT
-# ============================================================
 
 if __name__ == "__main__":
     main()

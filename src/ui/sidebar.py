@@ -17,11 +17,12 @@ def render_sidebar() -> dict[str, Any]:
 
     st.sidebar.header("Document Library")
 
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload a PDF",
+    uploaded_files = st.sidebar.file_uploader(
+        "Upload PDFs",
         type=["pdf"],
+        accept_multiple_files=True,
         help=(
-            "Upload a PDF document to index it "
+            "Upload multiple PDF documents to index them "
             "for question answering."
         ),
     )
@@ -75,7 +76,7 @@ def render_sidebar() -> dict[str, Any]:
     )
 
     return {
-        "uploaded_file": uploaded_file,
+        "uploaded_files": uploaded_files,
         "top_k": top_k,
     }
 

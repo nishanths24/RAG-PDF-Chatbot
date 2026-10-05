@@ -21,11 +21,16 @@ class DocumentServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.embedding_service = Mock()
         self.vector_store = Mock()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.vector_store.persist_directory = Path(self.temp_dir.name)
 
         self.service = DocumentService(
             embedding_service=self.embedding_service,
             vector_store=self.vector_store,
         )
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
 
     @patch("src.services.document_service.split_documents")
     @patch("src.services.document_service.process_pdf")
