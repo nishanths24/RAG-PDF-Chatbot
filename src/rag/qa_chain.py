@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.rag.ollama_service import OllamaService
+from src.rag.groq_service import GroqService
 from src.rag.prompts import build_rag_prompt
 from src.retrieval.retriever import RetrievalResult, Retriever
+from src.orchestration.query_router import QueryRouter, QueryMode
 
 
 @dataclass(frozen=True)
@@ -23,10 +24,11 @@ class QAChain:
     def __init__(
         self,
         retriever: Retriever,
-        llm: OllamaService,
+        llm: GroqService,
     ) -> None:
         self.retriever = retriever
         self.llm = llm
+        self.router = QueryRouter()
 
     def ask(self, question: str) -> QAResponse:
         """Retrieve relevant context and generate a grounded answer."""
@@ -35,16 +37,26 @@ class QAChain:
         if not cleaned_question:
             raise ValueError("Question must not be empty.")
 
-        results = self.retriever.retrieve(cleaned_question)
+        mode = self.router.route(cleaned_question)
+        depth = self.router.get_retrieval_depth(mode, self.retriever.top_k)
+        
+        results = []
+        if mode != QueryMode.CONVERSATIONAL:
+            original_top_k = self.retriever.top_k
+            self.retriever.top_k = depth
+            try:
+                results = self.retriever.retrieve(cleaned_question)
+            finally:
+                self.retriever.top_k = original_top_k
 
-        if not results:
-            return QAResponse(
-                answer=(
-                    "I couldn't find relevant information in the "
-                    "uploaded documents."
-                ),
-                sources=[],
-            )
+            if not results:
+                return QAResponse(
+                    answer=(
+                        "I couldn't find enough information in the "
+                        "uploaded document to answer that confidently."
+                    ),
+                    sources=[],
+                )
 
         context_parts: list[str] = []
 
@@ -60,7 +72,7 @@ class QAChain:
                 f"{document.page_content}"
             )
 
-        context = "\n\n".join(context_parts)
+        context = "\n\n".join(context_parts) if context_parts else ""
 
         prompt = build_rag_prompt(
             question=cleaned_question,

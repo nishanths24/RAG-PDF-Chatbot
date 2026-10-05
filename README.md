@@ -2,7 +2,7 @@
 
 A local, privacy-friendly **Retrieval-Augmented Generation (RAG) PDF Chatbot** built with Python and Streamlit.
 
-The application allows users to upload PDF documents, extract and chunk their content, create local semantic embeddings, store them in FAISS, retrieve relevant passages, and generate grounded answers using a locally running **Qwen2.5 3B** model through **Ollama**.
+The application allows users to upload PDF documents, extract and chunk their content, create local semantic embeddings, store them in FAISS, retrieve relevant passages, and generate grounded answers using a locally running **GPT-OSS 20B** model through **Groq**.
 
 No paid LLM API is required.
 
@@ -19,7 +19,7 @@ Instead of sending the entire document to an LLM, the application:
 3. Generates local embeddings using `all-MiniLM-L6-v2`.
 4. Stores the embeddings in a persistent FAISS vector index.
 5. Retrieves relevant chunks for each question.
-6. Uses Qwen2.5 3B through Ollama to generate an answer.
+6. Uses GPT-OSS 20B through Groq API to generate an answer.
 7. Displays the retrieved document pages as sources.
 
 The system also uses query-aware retrieval for broad document-level questions such as summaries and overviews.
@@ -82,8 +82,8 @@ The system also uses query-aware retrieval for broad document-level questions su
 * 🔎 Semantic document retrieval
 * 🧠 Local sentence-transformer embeddings
 * 🗂️ Persistent FAISS vector database
-* 🤖 Local Qwen2.5 3B language model
-* 🖥️ Ollama local inference
+* 🤖 GPT-OSS 20B language model
+* 🖥️ Groq API inference
 * 💬 Streamlit chat interface
 * 📚 Source and page attribution
 * 🔄 Automatic re-indexing when a different PDF is uploaded
@@ -106,8 +106,8 @@ The system also uses query-aware retrieval for broad document-level questions su
 | Embeddings        | Sentence Transformers    |
 | Embedding Model   | `all-MiniLM-L6-v2`       |
 | Vector Database   | FAISS                    |
-| LLM               | Qwen2.5 3B               |
-| Local LLM Runtime | Ollama                   |
+| LLM               | GPT-OSS 20B              |
+| LLM Provider      | Groq                     |
 | Configuration     | YAML + python-dotenv     |
 | Testing           | Python `unittest`        |
 | Version Control   | Git + GitHub             |
@@ -191,13 +191,13 @@ Multiple retrieval perspectives are used to obtain a more representative set of 
 The retrieved context is passed to:
 
 ```text
-Qwen2.5 3B
+GPT-OSS 20B
 ```
 
 through:
 
 ```text
-Ollama
+Groq API
 ```
 
 The model is instructed to use the retrieved PDF content as the primary source of truth and avoid unsupported information.
@@ -244,7 +244,7 @@ RAG-PDF-Chatbot/
 │   ├── rag/
 │   │   ├── prompts.py
 │   │   ├── qa_chain.py
-│   │   └── ollama_service.py
+│   │   └── groq_service.py
 │   │
 │   ├── services/
 │   │   ├── document_service.py
@@ -272,12 +272,11 @@ RAG-PDF-Chatbot/
 ## Requirements
 
 * Python 3.12
-* Ollama
-* Qwen2.5 3B
+* Groq API Key
 * Windows, Linux, or macOS
 * Approximately 4 GB+ available RAM recommended for comfortable local operation
 
-The project can run without an OpenAI API key.
+The project uses Groq for fast inference.
 
 ---
 
@@ -310,46 +309,17 @@ Activate it:
 pip install -r requirements.txt
 ```
 
-### 4. Install Ollama
+### 4. Setup Environment Variables
+
+Create a `.env` file and add your Groq API key:
+```bash
+GROQ_API_KEY=your_key_here
+```
 
 Install Ollama on your system and verify:
 
 ```powershell
 ollama --version
-```
-
-### 5. Download Qwen2.5 3B
-
-```powershell
-ollama pull qwen2.5:3b
-```
-
-Verify the model:
-
-```powershell
-ollama list
-```
-
-### 6. Start Ollama
-
-```powershell
-ollama serve
-```
-
-If Ollama is already running, do not start a second server.
-
-### CPU-only systems
-
-If Ollama attempts to use an unsupported GPU configuration, the application can be run with CPU inference:
-
-```powershell
-$env:OLLAMA_LLM_LIBRARY="cpu"
-```
-
-Then start Ollama:
-
-```powershell
-ollama serve
 ```
 
 ---
@@ -412,8 +382,8 @@ application:
   environment: development
 
 llm:
-  provider: ollama
-  model: qwen2.5:3b
+  provider: groq
+  model: openai/gpt-oss-20b
   temperature: 0.0
 
 embeddings:
@@ -449,7 +419,7 @@ The project includes unit tests covering:
 * Similarity search
 * Retrieval
 * Prompt construction
-* Ollama service behavior
+* Groq service behavior
 * QA chain behavior
 * Chat service
 * Configuration-related functionality
@@ -477,12 +447,12 @@ Local Embeddings
  ↓
 Local FAISS
  ↓
-Local Ollama
+Groq API
  ↓
-Local Qwen2.5 3B
+GPT-OSS 20B
 ```
 
-No paid OpenAI API is required for the current implementation.
+Embeddings are strictly local while inference uses the Groq API.
 
 Uploaded documents and generated vector indexes are kept outside the Git repository through `.gitignore`.
 

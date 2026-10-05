@@ -25,7 +25,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.config.settings import get_settings
 from src.embeddings.embedding_service import EmbeddingService
-from src.rag.ollama_service import OllamaService
+from src.rag.groq_service import GroqService
 from src.rag.qa_chain import QAChain
 from src.retrieval.retriever import Retriever
 from src.services.chat_service import ChatService
@@ -104,11 +104,12 @@ def build_services(
     )
 
     # --------------------------------------------------------
-    # Ollama
+    # Groq
     # --------------------------------------------------------
 
-    ollama_service = OllamaService(
+    groq_service = GroqService(
         model=settings.llm.model,
+        temperature=settings.llm.temperature,
     )
 
     # --------------------------------------------------------
@@ -117,7 +118,7 @@ def build_services(
 
     qa_chain = QAChain(
         retriever=retriever,
-        llm=ollama_service,
+        llm=groq_service,
     )
 
     # --------------------------------------------------------
@@ -194,7 +195,7 @@ def main() -> None:
 
     st.caption(
         "Ask questions about your PDF using local embeddings, "
-        "FAISS, Ollama, and Qwen2.5 3B."
+        "FAISS, and Groq."
     )
 
     # --------------------------------------------------------

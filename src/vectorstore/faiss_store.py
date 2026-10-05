@@ -377,6 +377,37 @@ class FAISSVectorStore:
             for document in self._documents
         )
 
+    def remove_document(self, document_id: str) -> None:
+        """Remove all chunks and vectors belonging to a document_id."""
+        cleaned_id = str(document_id).strip()
+        if not cleaned_id:
+            raise ValueError("document_id must not be empty.")
+
+        if self.is_empty():
+            return
+
+        indices_to_keep = [
+            i for i, doc in enumerate(self._documents)
+            if str(doc.metadata.get("document_id", "")).strip() != cleaned_id
+        ]
+        
+        if len(indices_to_keep) == self.count():
+            return  # Nothing to remove
+
+        new_index = self._create_empty_index()
+        new_documents = []
+        
+        if indices_to_keep:
+            vectors_to_keep = []
+            for i in indices_to_keep:
+                vectors_to_keep.append(self._index.reconstruct(int(i)))
+            new_index.add(np.asarray(vectors_to_keep, dtype=np.float32))
+            new_documents = [self._documents[i] for i in indices_to_keep]
+
+        self._index = new_index
+        self._documents = new_documents
+        self.save()
+
     def is_empty(self) -> bool:
         """Return True when the vector store contains no vectors."""
         return self.count() == 0

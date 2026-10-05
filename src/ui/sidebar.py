@@ -56,7 +56,7 @@ def render_sidebar() -> dict[str, Any]:
     # Local AI Stack
     # --------------------------------------------------------
 
-    st.sidebar.caption("Local AI Stack")
+    st.sidebar.caption("AI Stack")
 
     st.sidebar.caption(
         "Embeddings: all-MiniLM-L6-v2"
@@ -67,15 +67,11 @@ def render_sidebar() -> dict[str, Any]:
     )
 
     st.sidebar.caption(
-        "LLM: Qwen2.5 3B"
+        "LLM: GPT-OSS 20B"
     )
 
     st.sidebar.caption(
-        "Runtime: Ollama"
-    )
-
-    st.sidebar.caption(
-        "No paid API required"
+        "Provider: Groq"
     )
 
     return {

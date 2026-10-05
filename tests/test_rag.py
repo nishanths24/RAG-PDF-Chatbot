@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 from langchain_core.documents import Document
 
-from src.rag.ollama_service import OllamaService, OllamaServiceError
+from src.rag.groq_service import GroqService, GroqServiceError
 from src.rag.prompts import SYSTEM_PROMPT, build_rag_prompt
 from src.rag.qa_chain import QAChain, QAResponse
 from src.retrieval.retriever import RetrievalResult
@@ -38,33 +38,37 @@ class PromptTests(unittest.TestCase):
             build_rag_prompt("Some question", "")
 
 
-class OllamaServiceTests(unittest.TestCase):
-    """Test the local Ollama service without making real API calls."""
+class GroqServiceTests(unittest.TestCase):
+    """Test the Groq service without making real API calls."""
 
+    @patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'})
     def test_configuration_is_stored(self) -> None:
-        service = OllamaService(
-            model="qwen2.5:3b",
-            base_url="http://localhost:11434/",
+        service = GroqService(
+            model="test-model",
+            base_url="https://api.test.com/v1",
             timeout=60,
         )
 
-        self.assertEqual(service.model, "qwen2.5:3b")
-        self.assertEqual(service.base_url, "http://localhost:11434")
+        self.assertEqual(service.model, "test-model")
+        self.assertEqual(service.base_url, "https://api.test.com/v1")
         self.assertEqual(service.timeout, 60)
+        self.assertEqual(service.api_key, "test_key")
 
-    @patch("src.rag.ollama_service.requests.get")
+    @patch("src.rag.groq_service.requests.get")
+    @patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'})
     def test_is_available_returns_true_for_http_200(
         self,
         mock_get: Mock,
     ) -> None:
         mock_get.return_value.status_code = 200
 
-        service = OllamaService()
+        service = GroqService()
 
         self.assertTrue(service.is_available())
         mock_get.assert_called_once()
 
-    @patch("src.rag.ollama_service.requests.get")
+    @patch("src.rag.groq_service.requests.get")
+    @patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'})
     def test_is_available_returns_false_when_connection_fails(
         self,
         mock_get: Mock,
@@ -73,21 +77,22 @@ class OllamaServiceTests(unittest.TestCase):
 
         mock_get.side_effect = requests.RequestException("Connection failed")
 
-        service = OllamaService()
+        service = GroqService()
 
         self.assertFalse(service.is_available())
 
-    @patch("src.rag.ollama_service.requests.post")
+    @patch("src.rag.groq_service.requests.post")
+    @patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'})
     def test_generate_returns_model_response(
         self,
         mock_post: Mock,
     ) -> None:
         mock_post.return_value.status_code = 200
         mock_post.return_value.json.return_value = {
-            "response": "Machine learning is a branch of AI."
+            "choices": [{"message": {"content": "Machine learning is a branch of AI."}}]
         }
 
-        service = OllamaService()
+        service = GroqService()
 
         result = service.generate("What is machine learning?")
 
@@ -98,8 +103,9 @@ class OllamaServiceTests(unittest.TestCase):
 
         mock_post.assert_called_once()
 
+    @patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'})
     def test_empty_prompt_is_rejected(self) -> None:
-        service = OllamaService()
+        service = GroqService()
 
         with self.assertRaises(ValueError):
             service.generate("")
@@ -122,13 +128,14 @@ class QAChainTests(unittest.TestCase):
 
     def test_no_retrieval_results_returns_fallback(self) -> None:
         self.retriever.retrieve.return_value = []
+        self.retriever.top_k = 3
 
         result = self.chain.ask("What is machine learning?")
 
         self.assertIsInstance(result, QAResponse)
         self.assertEqual(result.sources, [])
         self.assertIn(
-            "couldn't find relevant information",
+            "couldn't find enough information",
             result.answer.lower(),
         )
         self.llm.generate.assert_not_called()
