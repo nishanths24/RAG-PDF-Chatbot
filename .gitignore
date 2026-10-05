@@ -8,3 +8,4 @@ data/uploads/*
 data/vectorstore/*
 !data/uploads/.gitkeep
 !data/vectorstore/.gitkeep
+.streamlit/secrets.toml

@@ -73,7 +73,7 @@ class RetrieverTests(unittest.TestCase):
 
         self.vector_store.similarity_search.assert_called_once_with(
             [1.0, 0.0, 0.0],
-            k=2,
+            k=20,
         )
 
     def test_retrieve_returns_retrieval_results(self) -> None:

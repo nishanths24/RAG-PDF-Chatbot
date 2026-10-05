@@ -47,8 +47,9 @@ class DocumentRegistry:
         return self._documents.get(document_id)
 
     def get_all_documents(self) -> list[DocumentMetadata]:
-        """Return all registered documents."""
-        return list(self._documents.values())
+        """Return all registered documents sorted by insertion/indexed time."""
+        docs = list(self._documents.values())
+        return sorted(docs, key=lambda d: d.indexed_at)
 
     def contains_hash(self, file_hash: str) -> bool:
         """Check if a file hash is already indexed."""

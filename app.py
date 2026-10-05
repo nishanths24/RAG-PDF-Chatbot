@@ -141,6 +141,7 @@ def main() -> None:
             top_k=top_k,
         )
         chat_service.qa_chain.retriever.top_k = top_k
+        chat_service.qa_chain.document_registry = document_service.registry
     except Exception as exc:
         st.error(f"Unable to initialize the RAG system: {exc}")
         st.stop()

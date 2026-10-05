@@ -121,7 +121,9 @@ def render_chat(
 
         content = message["content"]
 
-        with st.chat_message(role):
+        avatar = "assets/user.png" if role == "user" else "assets/assistant.png"
+
+        with st.chat_message(role, avatar=avatar):
 
             st.markdown(content)
 
